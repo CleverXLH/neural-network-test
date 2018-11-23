@@ -1,0 +1,105 @@
+import torch
+import torch.nn.functional as F
+#use nn module to train
+import matplotlib.pyplot as plt
+#use matplotlib to draw the curve
+import random
+import numpy as np
+
+# torch.manual_seed(1)    # reproducible
+
+#define the division of data
+def train_division(x):
+    a = x.data.numpy()
+    c = np.zeros(shape=(69, 1), dtype=float)
+    # b = np.random.permutation(a)
+    b = np.linspace(0, 100, num=70, dtype=int)
+    for i in range(0, 69):
+        c[i] = a[b[i]]
+    train_x = torch.from_numpy(c).float()
+    return train_x
+
+def test_division(x):
+    a = x.data.numpy()
+    c = np.zeros(shape=(100, 1))
+    b = np.linspace(0, 100, num=70, dtype=int)
+    # b = np.random.permutation(a)
+    c = a
+    j = 0
+    for i in range(0, 69):
+        c = np.delete(c, b[i] - j, axis=0)
+        j = j + 1
+    test_x = torch.from_numpy(c).float()
+    return test_x
+
+#data(y=sinx)
+x = torch.unsqueeze(torch.linspace(-3.14, 3.14, 100), dim=1)  # x data (tensor), shape=(100, 1)
+train_X = train_division(x)
+
+
+y = x.sin() + 0.2*torch.rand(x.size())
+train_Y = train_division(y)
+# torch can only train on Variable, so convert them to Variable
+# The code below is deprecated in Pytorch 0.4. Now, autograd directly supports tensors
+# x, y = Variable(x), Variable(y)
+
+# plt.scatter(x.data.numpy(), y.data.numpy())
+# plt.show()
+
+#define the net
+class Net(torch.nn.Module):
+    def __init__(self, n_feature, n_hidden, n_output):
+        super(Net, self).__init__()
+        self.hidden = torch.nn.Linear(n_feature, n_hidden)   # hidden layer
+        self.predict = torch.nn.Linear(n_hidden, n_output)   # output layer
+
+    def forward(self, x):
+        x = F.relu(self.hidden(x))      # activation function for hidden layer
+        x = self.predict(x)             # linear output
+        return x
+
+net = Net(n_feature=1, n_hidden=10, n_output=1)     # define the network(one input, one output, ten hidden nerve cell)
+
+optimizer = torch.optim.SGD(net.parameters(), lr=0.2)   #use random gradient descent based on optimized neural Network
+loss_func = torch.nn.MSELoss()  # this is for regression mean squared loss{(y-prediction)^2}
+
+plt.ion()   #open the interactive model
+
+#70% of data is used to train
+for t in range(100):
+    prediction = net(train_X)     # input x and predict based on x
+
+    loss = loss_func(prediction, train_Y)     # must be (1. nn output, 2. target)
+
+    optimizer.zero_grad()   # clear gradients for next train
+    loss.backward()         # backpropagation, compute gradients
+    optimizer.step()        # apply gradients,update the train
+    print(loss.item())
+
+    if t % 5 == 0:
+        # plot and show learning process
+        plt.cla()   #clear the axis
+        plt.scatter(train_X.data.numpy(), train_Y.data.numpy())    #trace point mapping
+        plt.plot(train_X.data.numpy(), prediction.data.numpy(), 'r-', lw=5)   #draw predicited curve
+        plt.text(0.5, 0, 'Loss=%.4f' % loss.data.numpy(), fontdict={'size': 20, 'color':  'red'})   #show the loss on the plot
+        plt.pause(0.1)   #set the time of updating the plot
+
+plt.ioff()   #close the interactive model
+plt.show()   #show the plot
+
+
+#30% of data is used to test
+test_X = test_division(x)
+test_Y = test_division(y)
+
+
+prediction = net(test_X)     # input x and predict based on x
+
+loss = loss_func(prediction, test_Y)     # must be (1. nn output, 2. target)
+print('test loss',loss.item())
+plt.cla()   #clear the axis
+plt.scatter(test_X.data.numpy(), test_Y.data.numpy())    #trace point mapping
+plt.plot(test_X.data.numpy(), prediction.data.numpy(), 'r-', lw=5)   #draw predicited curve
+plt.text(0.5, 0, 'Loss=%.4f' % loss.data.numpy(), fontdict={'size': 20, 'color':  'red'})   #show the loss on the plot
+plt.pause(0.1)   #set the time of updating the plot
+plt.show()
