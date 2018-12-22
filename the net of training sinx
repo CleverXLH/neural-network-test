@@ -1,105 +1,113 @@
+%matplotlib inline
+matplotlib.use('Agg')
+
 import torch
 import torch.nn.functional as F
-#use nn module to train
 import matplotlib.pyplot as plt
-#use matplotlib to draw the curve
-import random
 import numpy as np
+from sklearn.model_selection import train_test_split
+import os
 
-# torch.manual_seed(1)    # reproducible
+#define the data set of y=sinx
+def data(num):
+    x = torch.unsqueeze(torch.linspace(-3, 3, num), dim=1)
+    y = x.sin() + 0.2 * torch.rand(x.size())
+    return x, y
 
-#define the division of data
-def train_division(x):
-    a = x.data.numpy()
-    c = np.zeros(shape=(69, 1), dtype=float)
-    # b = np.random.permutation(a)
-    b = np.linspace(0, 100, num=70, dtype=int)
-    for i in range(0, 69):
-        c[i] = a[b[i]]
-    train_x = torch.from_numpy(c).float()
-    return train_x
+#divide the data set into test set and train set
+def transform(x, y):
+    x_and_y = torch.cat([x, y], 1)
+    x_and_y_numpy = x_and_y.numpy()
+    x_and_y_array_train, x_and_y_array_test = train_test_split(x_and_y_numpy, test_size=0.20, random_state=42)
+    x_and_y_torch_train = torch.from_numpy(x_and_y_array_train)
+    x_and_y_torch_test = torch.from_numpy(x_and_y_array_test)
+    x_train, y_train = torch.chunk(x_and_y_torch_train, 2, dim=1)
+    x_test, y_test = torch.chunk(x_and_y_torch_test, 2, dim=1)
+    x_train_num = x_train.sort(dim=0)[1].numpy()
+    x_train = x_train.sort(dim=0)[0]
+    return x_test, y_test, x_train, y_train, x_train_num
 
-def test_division(x):
-    a = x.data.numpy()
-    c = np.zeros(shape=(100, 1))
-    b = np.linspace(0, 100, num=70, dtype=int)
-    # b = np.random.permutation(a)
-    c = a
-    j = 0
-    for i in range(0, 69):
-        c = np.delete(c, b[i] - j, axis=0)
-        j = j + 1
-    test_x = torch.from_numpy(c).float()
-    return test_x
+#divide the data set into y_train set
+def y_train_division(num, test_size , b, c):
+    a = np.zeros([0], dtype='float32')
+    for t in range(int(num * (1 - test_size))):
+        a = np.append(a, b[c[t, 0]])
+    y_train = a.reshape(-1, 1)
+    y_train = torch.from_numpy(y_train)
+    return y_train
 
-#data(y=sinx)
-x = torch.unsqueeze(torch.linspace(-3.14, 3.14, 100), dim=1)  # x data (tensor), shape=(100, 1)
-train_X = train_division(x)
+#divide the data set into y_test set
+def y_test_division(num, test_size, b, c):
+    i = b.sort(dim=0)[1]
+    i_numpy = i.numpy()
+    a = np.zeros([0], dtype='float32')
+    for t in range(int(num * (test_size))):
+        a = np.append(a, c[i_numpy[t, 0]])
+    y_test = a.reshape(-1, 1)
+    y_test = torch.from_numpy(y_test)
+    return y_test
 
-
-y = x.sin() + 0.2*torch.rand(x.size())
-train_Y = train_division(y)
-# torch can only train on Variable, so convert them to Variable
-# The code below is deprecated in Pytorch 0.4. Now, autograd directly supports tensors
-# x, y = Variable(x), Variable(y)
-
-# plt.scatter(x.data.numpy(), y.data.numpy())
-# plt.show()
-
-#define the net
+#define the training net
 class Net(torch.nn.Module):
     def __init__(self, n_feature, n_hidden, n_output):
         super(Net, self).__init__()
-        self.hidden = torch.nn.Linear(n_feature, n_hidden)   # hidden layer
-        self.predict = torch.nn.Linear(n_hidden, n_output)   # output layer
+        self.hidden = torch.nn.Linear(n_feature, n_hidden)
+        self.predict = torch.nn.Linear(n_hidden, n_output)
 
     def forward(self, x):
-        x = F.relu(self.hidden(x))      # activation function for hidden layer
-        x = self.predict(x)             # linear output
+        x = F.relu(self.hidden(x))
+        x = self.predict(x)
         return x
 
-net = Net(n_feature=1, n_hidden=10, n_output=1)     # define the network(one input, one output, ten hidden nerve cell)
+#train the training set
+num = 50000
+x, y = data(num)
+x_test, y_test, x_train, y_train, x_train_num = transform(x, y)
+y_train = y_train_division(num, 0.2, y_train, x_train_num)
+y_test = y_test_division(num, 0.2, x_test, y_test)
+x_test = x_test.sort(dim=0)[0]
+net = Net(n_feature=1, n_hidden=50, n_output=1)
+optimizer = torch.optim.SGD(net.parameters(), lr=0.02)
+loss_func = torch.nn.MSELoss()
 
-optimizer = torch.optim.SGD(net.parameters(), lr=0.2)   #use random gradient descent based on optimized neural Network
-loss_func = torch.nn.MSELoss()  # this is for regression mean squared loss{(y-prediction)^2}
 
-plt.ion()   #open the interactive model
-
-#70% of data is used to train
-for t in range(100):
-    prediction = net(train_X)     # input x and predict based on x
-
-    loss = loss_func(prediction, train_Y)     # must be (1. nn output, 2. target)
-
-    optimizer.zero_grad()   # clear gradients for next train
-    loss.backward()         # backpropagation, compute gradients
-    optimizer.step()        # apply gradients,update the train
-    print(loss.item())
-
+#display the training process
+plt.ion()
+for t in range(200):
+    prediction = net(x_train)
+    loss = loss_func(prediction, y_train)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
     if t % 5 == 0:
-        # plot and show learning process
-        plt.cla()   #clear the axis
-        plt.scatter(train_X.data.numpy(), train_Y.data.numpy())    #trace point mapping
-        plt.plot(train_X.data.numpy(), prediction.data.numpy(), 'r-', lw=5)   #draw predicited curve
-        plt.text(0.5, 0, 'Loss=%.4f' % loss.data.numpy(), fontdict={'size': 20, 'color':  'red'})   #show the loss on the plot
-        plt.pause(0.1)   #set the time of updating the plot
+        plt.clf()
+        plt.subplot(2,1,1)
+        plt.title('The training set display')
+        plt.scatter(x_train.data.numpy(), y_train.data.numpy(),linewidths=0.01, marker='.')
+        plt.plot(x_train.data.numpy(), prediction.data.numpy(), 'r-', lw=1)
+        plt.text(0.5, 0, 'Loss=%.4f' % loss.data.numpy(), fontdict={'size': 15, 'color': 'red'})
+        plt.pause(0.1)
+    if not os.path.exists('train_img'):
+        os.mkdir('train_img')
+    plt.savefig('train_img/train_step%d.png'%t)
 
-plt.ioff()   #close the interactive model
-plt.show()   #show the plot
+plt.show()
+
+#test the test set in the training net
+prediction1 = net(x_test)
+loss1 = loss_func(prediction1, y_test)
 
 
-#30% of data is used to test
-test_X = test_division(x)
-test_Y = test_division(y)
+#display the testing process
+plt.subplot(2, 1, 2)
+plt.title('The test set display')
+plt.scatter(x_test.data.numpy(), y_test.data.numpy(),linewidths=0.01, marker='.')
+plt.plot(x_test.data.numpy(), prediction1.data.numpy(), 'r-', lw=1)
+plt.text(0.5, 0, 'Loss=%.4f' % loss1.data.numpy(), fontdict={'size': 15, 'color': 'red'})
+plt.pause(0.1)
+if not os.path.exists('test_img'):
+    os.mkdir('test_img')
+plt.savefig('test_img/test_result%d.png' % t)
 
-
-prediction = net(test_X)     # input x and predict based on x
-
-loss = loss_func(prediction, test_Y)     # must be (1. nn output, 2. target)
-print('test loss',loss.item())
-plt.cla()   #clear the axis
-plt.scatter(test_X.data.numpy(), test_Y.data.numpy())    #trace point mapping
-plt.plot(test_X.data.numpy(), prediction.data.numpy(), 'r-', lw=5)   #draw predicited curve
-plt.text(0.5, 0, 'Loss=%.4f' % loss.data.numpy(), fontdict={'size': 20, 'color':  'red'})   #show the loss on the plot
-plt.pause(0.1)   #set the time of updating the plot
+plt.ioff()
 plt.show()
